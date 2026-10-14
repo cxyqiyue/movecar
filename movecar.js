@@ -1,21 +1,48 @@
 /**
  * MoveCar 多用户智能挪车系统 - v2.1
  * 优化：30分钟断点续传 + 域名优先级二维码 + 多用户隔离
+ * 已适配 GitHub Pages Service Worker 代理（CORS + 相对路径）
  */
 
-addEventListener('fetch', event => {
-  event.respondWith(handleRequest(event.request))
-})
+// ==================== CORS 配置 ====================
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': '*', // 允许所有请求头，避免预检失败
+  'Access-Control-Max-Age': '86400',
+};
 
-const CONFIG = {
-  KV_TTL: 3600,         // 坐标等数据有效期：1 小时
-  SESSION_TTL: 1800,    // 挪车会话有效期：30 分钟 (1800秒)
-  RATE_LIMIT_TTL: 60    // 频率限制：60 秒
+// ==================== CORS 包装器 ====================
+addEventListener('fetch', event => {
+  event.respondWith(handleRequestWrapper(event.request));
+});
+
+async function handleRequestWrapper(request) {
+  // 1. 处理跨域预检请求 (OPTIONS)
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { headers: CORS_HEADERS });
+  }
+
+  // 2. 执行原有业务逻辑
+  const response = await handleRequestInternal(request);
+
+  // 3. 给所有响应附加 CORS 头
+  const newHeaders = new Headers(response.headers);
+  for (const [key, value] of Object.entries(CORS_HEADERS)) {
+    newHeaders.set(key, value);
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: newHeaders,
+  });
 }
 
-async function handleRequest(request) {
-  const url = new URL(request.url)
-  const path = url.pathname
+// ==================== 业务逻辑 ====================
+async function handleRequestInternal(request) {
+  const url = new URL(request.url);
+  const path = url.pathname;
   const userParam = url.searchParams.get('u') || 'default';
   const userKey = userParam.toLowerCase();
 
@@ -26,7 +53,7 @@ async function handleRequest(request) {
   if (path === '/api/notify' && request.method === 'POST') return handleNotify(request, url, userKey);
   if (path === '/api/get-location') return handleGetLocation(userKey);
   if (path === '/api/owner-confirm' && request.method === 'POST') return handleOwnerConfirmAction(request, userKey);
-  
+
   // 查询状态 API (带 Session 校验)
   if (path === '/api/check-status') {
     const s = url.searchParams.get('s');
@@ -58,7 +85,7 @@ function wgs84ToGcj02(lat, lng) {
   let magic = Math.sin(radLat); magic = 1 - ee * magic * magic;
   const sqrtMagic = Math.sqrt(magic);
   dLat = (dLat * 180.0) / ((a * (1 - ee)) / (magic * sqrtMagic) * Math.PI);
-  dLng = (dLng * 180.0) / (a / sqrtMagic * Math.cos(radLat) * Math.PI);
+  dLng = (dLng * 180.0) / ((a / sqrtMagic * Math.cos(radLat) * Math.PI));
   return { lat: lat + dLat, lng: lng + dLng };
 }
 function transformLat(x, y) {
@@ -92,7 +119,7 @@ async function handleNotify(request, url, userKey) {
     if (isLocked) throw new Error('发送频率过快，请一分钟后再试');
 
     const body = await request.json();
-    const sessionId = body.sessionId; 
+    const sessionId = body.sessionId;
 
     const ppToken = getUserConfig(userKey, 'PUSHPLUS_TOKEN');
     const barkUrl = getUserConfig(userKey, 'BARK_URL');
@@ -101,10 +128,9 @@ async function handleNotify(request, url, userKey) {
     const confirmUrl = baseDomain + "/owner-confirm?u=" + userKey;
 
     let notifyText = "🚗 挪车请求【" + carTitle + "】\\n💬 留言: " + (body.message || '车旁有人等待');
-    
-    // 存储当前会话信息，有效期设为 30 分钟
+
     const statusData = { status: 'waiting', sessionId: sessionId };
-    
+
     if (body.location && body.location.lat) {
       const maps = generateMapUrls(body.location.lat, body.location.lng);
       await MOVE_CAR_STATUS.put("loc_" + userKey, JSON.stringify({ ...body.location, ...maps }), { expirationTtl: CONFIG.KV_TTL });
@@ -134,9 +160,9 @@ async function handleCheckStatus(userKey, clientSessionId) {
   }
 
   const ownerLoc = await MOVE_CAR_STATUS.get("owner_loc_" + userKey);
-  return new Response(JSON.stringify({ 
-    status: statusObj.status, 
-    ownerLocation: ownerLoc ? JSON.parse(ownerLoc) : null 
+  return new Response(JSON.stringify({
+    status: statusObj.status,
+    ownerLocation: ownerLoc ? JSON.parse(ownerLoc) : null
   }));
 }
 
@@ -155,7 +181,6 @@ async function handleOwnerConfirmAction(request, userKey) {
       const urls = generateMapUrls(body.location.lat, body.location.lng);
       await MOVE_CAR_STATUS.put("owner_loc_" + userKey, JSON.stringify({ ...body.location, ...urls }), { expirationTtl: 600 });
     }
-    // 确认后状态继续保持，直到 SESSION_TTL 到期
     await MOVE_CAR_STATUS.put("status_" + userKey, JSON.stringify(statusObj), { expirationTtl: 600 });
   }
   return new Response(JSON.stringify({ success: true }));
@@ -242,7 +267,6 @@ function renderMainPage(origin, userKey) {
     <div class="card" id="locStatus" style="font-size:13px; color:#94a3b8; text-align:center;">定位请求中...</div>
     <button id="notifyBtn" class="btn-main" onclick="sendNotify()">🔔 发送通知</button>
   </div>
-
   <div class="container hidden" id="successView">
     <div class="card" style="text-align:center">
       <div style="font-size:64px; margin-bottom:15px">📧</div>
@@ -262,18 +286,15 @@ function renderMainPage(origin, userKey) {
       ${phoneHtml}
     </div>
   </div>
-
   <script>
     let userLoc = null;
     const userKey = "${userKey}";
-    
-    // 会话持久化
+
     let sessionId = localStorage.getItem('movecar_session_' + userKey);
     if (!sessionId) {
       sessionId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
       localStorage.setItem('movecar_session_' + userKey, sessionId);
     }
-
     window.onload = async () => {
       checkActiveSession();
       if (navigator.geolocation) {
@@ -286,10 +307,9 @@ function renderMainPage(origin, userKey) {
         });
       }
     };
-
     async function checkActiveSession() {
       try {
-        const res = await fetch('/api/check-status?u=' + userKey + '&s=' + sessionId);
+        const res = await fetch('./api/check-status?u=' + userKey + '&s=' + sessionId);
         const data = await res.json();
         if (data.status && data.status !== 'none') {
           showSuccess(data);
@@ -297,19 +317,17 @@ function renderMainPage(origin, userKey) {
         }
       } catch(e){}
     }
-
     function setTag(t) { document.getElementById('msgInput').value = t; }
-
     async function sendNotify() {
       const btn = document.getElementById('notifyBtn');
       btn.disabled = true; btn.innerText = '正在联络车主...';
       try {
-        const res = await fetch('/api/notify?u=' + userKey, {
+        const res = await fetch('./api/notify?u=' + userKey, {
           method: 'POST',
-          body: JSON.stringify({ 
-            message: document.getElementById('msgInput').value, 
+          body: JSON.stringify({
+            message: document.getElementById('msgInput').value,
             location: userLoc,
-            sessionId: sessionId 
+            sessionId: sessionId
           })
         });
         const data = await res.json();
@@ -319,13 +337,11 @@ function renderMainPage(origin, userKey) {
         } else { alert(data.error); btn.disabled = false; btn.innerText = '🔔 发送通知'; }
       } catch(e) { alert('服务暂时不可用'); btn.disabled = false; }
     }
-
     function showSuccess(data) {
       document.getElementById('mainView').classList.add('hidden');
       document.getElementById('successView').classList.remove('hidden');
       updateUI(data);
     }
-
     function updateUI(data) {
       if (data.status === 'confirmed') {
         document.getElementById('ownerFeedback').classList.remove('hidden');
@@ -335,11 +351,10 @@ function renderMainPage(origin, userKey) {
         }
       }
     }
-
     function pollStatus() {
       setInterval(async () => {
         try {
-          const res = await fetch('/api/check-status?u=' + userKey + '&s=' + sessionId);
+          const res = await fetch('./api/check-status?u=' + userKey + '&s=' + sessionId);
           const data = await res.json();
           updateUI(data);
         } catch(e){}
@@ -384,7 +399,7 @@ function renderOwnerPage(userKey) {
   <script>
     const userKey = "${userKey}";
     window.onload = async () => {
-      const res = await fetch('/api/get-location?u=' + userKey);
+      const res = await fetch('./api/get-location?u=' + userKey);
       const data = await res.json();
       if(data.amapUrl) {
         document.getElementById('mapArea').style.display = 'block';
@@ -397,9 +412,9 @@ function renderOwnerPage(userKey) {
       btn.innerText = '已告知对方 ✓'; btn.disabled = true; btn.style.background = '#94a3b8';
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(async p => {
-          await fetch('/api/owner-confirm?u=' + userKey, { method: 'POST', body: JSON.stringify({ location: {lat: p.coords.latitude, lng: p.coords.longitude} }) });
+          await fetch('./api/owner-confirm?u=' + userKey, { method: 'POST', body: JSON.stringify({ location: {lat: p.coords.latitude, lng: p.coords.longitude} }) });
         }, async () => {
-          await fetch('/api/owner-confirm?u=' + userKey, { method: 'POST', body: JSON.stringify({ location: null }) });
+          await fetch('./api/owner-confirm?u=' + userKey, { method: 'POST', body: JSON.stringify({ location: null }) });
         });
       }
     }
