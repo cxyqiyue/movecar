@@ -4,7 +4,9 @@
 
 原项目缺陷是，***未备案的域名无法在微信中打开***。
 
-基于此原因，在 fork 的此项目基础上，修改了一下 [movecar.js](https://github.com/cxyqiyue/movecar/edit/main/movecar.js) 代码，并搭配 [cf-car](https://github.com/cxyqiyue/cf-car) ，通过访问 **https://<用户名>.github.io/cf-car** 方法，可以正常在微信页面打开网址，并引导用户使用默认浏览器访问挪车服务。
+基于此原因，在 fork 的此项目基础上，修改了一下 [movecar.js](https://github.com/cxyqiyue/movecar/edit/main/movecar.js) 代码，并搭配 [cf-car](https://github.com/cxyqiyue/cf-car) 项目。
+
+通过访问 **https://<用户名>.github.io/cf-car** 方法，可以正常在微信页面打开网址，并引导用户使用默认浏览器访问挪车服务。
 
 ### 未备案域名被拦截
 ![未备案域名被拦截](https://i.ibb.co/ZzT9KsLB/IMG-20261014-160356.jpg)
