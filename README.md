@@ -1,6 +1,14 @@
 # MoveCar - 多用户智能挪车系统 (v2.0)
 
 基于 Cloudflare Workers 的智能挪车通知系统，扫码即可通知车主，保护双方隐私。**v2.0 版本现已支持单实例多用户并发使用。**
+此项目缺陷是，未备案的域名无法在微信中打开。
+基于此原因，在 fork 的此项目基础上，修改了一下 [movecar.js](https://github.com/cxyqiyue/movecar/edit/main/movecar.js) 代码，并搭配 [cf-car](https://github.com/cxyqiyue/cf-car) ，通过访问 **https://<用户名>.github.io/cf-car** 方法，可以正常在微信页面打开网址，并引导用户使用默认浏览器访问挪车服务。
+
+### 未备案域名被拦截
+![未备案域名被拦截](https://i.ibb.co/ZzT9KsLB/IMG-20261014-160356.jpg)
+
+### 通过 github.io 跳转默认浏览器
+![通过 github.io 跳转默认浏览器](https://i.ibb.co/r2yzdf2L/IMG-20261014-155718.jpg)
 
 ## 🌐 界面预览
 
@@ -116,7 +124,7 @@
 - `PUSHPLUS_TOKEN_XIAOWANG`：该用户的专属令牌。
 - `BARK_URL_XIAOWANG`：https://api.day.app/xxxxxxxxxxxxxxxxxxxxxx（用户自己的Bark推送链接，并且末尾不能带 / 斜杠，不用苹果手机的可以不用添加这个变量）。
 - `CAR_TITLE_XIAOWANG`：显示的车辆/车主信息（如：粤B·88888）。
-- `EXTERNAL_URL`：填入你的反代备案域名（例如 https://xx.xxx.com）-（可选，注意：带上https，末尾不要带斜杠)
+- `EXTERNAL_URL`：填入你的反代备案域名（例如 https://xx.xxx.com）-（可选，注意：带上https，末尾不要带斜杠)，若域名未备案想使用 [cf-car](https://github.com/cxyqiyue/cf-car) 项目，则此项填 https://<用户名>.github.io
 - `PHONE_NUMBER_XIAOWANG`：该车主的备用电话-通知车主后没有回应的时候可以直接拨打电话（可选）。
 
 ### 第五步：绑定域名 (可选)
