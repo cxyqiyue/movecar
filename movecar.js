@@ -4,11 +4,18 @@
  * 已适配 GitHub Pages Service Worker 代理（CORS + 相对路径）
  */
 
+// ==================== 业务配置（之前漏掉了这一段！） ====================
+const CONFIG = {
+  KV_TTL: 3600,         // 坐标等数据有效期：1 小时
+  SESSION_TTL: 1800,    // 挪车会话有效期：30 分钟
+  RATE_LIMIT_TTL: 60    // 频率限制：60 秒
+};
+
 // ==================== CORS 配置 ====================
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': '*', // 允许所有请求头，避免预检失败
+  'Access-Control-Allow-Headers': '*',
   'Access-Control-Max-Age': '86400',
 };
 
@@ -18,15 +25,12 @@ addEventListener('fetch', event => {
 });
 
 async function handleRequestWrapper(request) {
-  // 1. 处理跨域预检请求 (OPTIONS)
   if (request.method === 'OPTIONS') {
     return new Response(null, { headers: CORS_HEADERS });
   }
 
-  // 2. 执行原有业务逻辑
   const response = await handleRequestInternal(request);
 
-  // 3. 给所有响应附加 CORS 头
   const newHeaders = new Headers(response.headers);
   for (const [key, value] of Object.entries(CORS_HEADERS)) {
     newHeaders.set(key, value);
@@ -46,24 +50,19 @@ async function handleRequestInternal(request) {
   const userParam = url.searchParams.get('u') || 'default';
   const userKey = userParam.toLowerCase();
 
-  // 1. 二维码生成工具
   if (path === '/qr') return renderQRPage(url.origin, userKey);
 
-  // 2. API 路由
   if (path === '/api/notify' && request.method === 'POST') return handleNotify(request, url, userKey);
   if (path === '/api/get-location') return handleGetLocation(userKey);
   if (path === '/api/owner-confirm' && request.method === 'POST') return handleOwnerConfirmAction(request, userKey);
 
-  // 查询状态 API (带 Session 校验)
   if (path === '/api/check-status') {
     const s = url.searchParams.get('s');
     return handleCheckStatus(userKey, s);
   }
 
-  // 3. 页面路由
   if (path === '/owner-confirm') return renderOwnerPage(userKey);
 
-  // 默认进入挪车首页
   return renderMainPage(url.origin, userKey);
 }
 
@@ -146,6 +145,7 @@ async function handleNotify(request, url, userKey) {
     await Promise.all(tasks);
     return new Response(JSON.stringify({ success: true }));
   } catch (e) {
+    console.error('[handleNotify] 异常:', e.message, e.stack);
     return new Response(JSON.stringify({ success: false, error: e.message }), { status: 500 });
   }
 }
